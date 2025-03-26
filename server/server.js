@@ -18,6 +18,13 @@ app.use(cors({
   credentials: true
 }));
 
+// Ensure emails.txt exists
+const emailsPath = path.join(__dirname, 'emails.txt');
+if (!fs.existsSync(emailsPath)) {
+  fs.writeFileSync(emailsPath, '', 'utf8');
+  console.log('Created emails.txt file');
+}
+
 // POST /signup endpoint
 app.post('/signup', (req, res) => {
   console.log('Received signup request:', req.body);
@@ -28,15 +35,19 @@ app.post('/signup', (req, res) => {
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  // Use absolute path for emails.txt
-  const emailsPath = path.join(__dirname, 'emails.txt');
+  console.log('Attempting to save email to:', emailsPath);
   
-  fs.appendFile(emailsPath, email + '\n', (err) => {
+  fs.appendFile(emailsPath, email + '\n', 'utf8', (err) => {
     if (err) {
       console.error('Error saving email:', err);
+      console.error('Error details:', {
+        code: err.code,
+        message: err.message,
+        path: emailsPath
+      });
       return res.status(500).json({ error: 'Error saving email' });
     }
-    console.log('Email registered:', email);
+    console.log('Email successfully registered:', email);
     res.json({ message: 'Email saved successfully!' });
   });
 });
@@ -46,7 +57,19 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Add endpoint to check emails file
+app.get('/check-emails', (req, res) => {
+  fs.readFile(emailsPath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading emails file:', err);
+      return res.status(500).json({ error: 'Error reading emails file' });
+    }
+    res.json({ emails: data.split('\n').filter(email => email.trim()) });
+  });
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+  console.log('Emails file location:', emailsPath);
 });
 
