@@ -1,32 +1,39 @@
 const express = require('express');
-const fs = require('fs');
 const cors = require('cors');
-const path = require('path');
+const { MongoClient } = require('mongodb');
+require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// MongoDB connection string
+const uri = process.env.MONGODB_URI || 'mongodb+srv://your-connection-string.mongodb.net/';
+const client = new MongoClient(uri);
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS configuration - more permissive for development
+// CORS configuration
 app.use(cors({
-  origin: true, // Allow all origins during development
+  origin: true,
   methods: ['POST', 'GET', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept'],
   credentials: true
 }));
 
-// Ensure emails.txt exists
-const emailsPath = path.join(__dirname, 'emails.txt');
-if (!fs.existsSync(emailsPath)) {
-  fs.writeFileSync(emailsPath, '', 'utf8');
-  console.log('Created emails.txt file');
+// Connect to MongoDB
+async function connectToMongo() {
+  try {
+    await client.connect();
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+  }
 }
 
 // POST /signup endpoint
-app.post('/signup', (req, res) => {
+app.post('/signup', async (req, res) => {
   console.log('Received signup request:', req.body);
   const email = req.body.email;
   
@@ -35,21 +42,42 @@ app.post('/signup', (req, res) => {
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  console.log('Attempting to save email to:', emailsPath);
-  
-  fs.appendFile(emailsPath, email + '\n', 'utf8', (err) => {
-    if (err) {
-      console.error('Error saving email:', err);
-      console.error('Error details:', {
-        code: err.code,
-        message: err.message,
-        path: emailsPath
-      });
-      return res.status(500).json({ error: 'Error saving email' });
+  try {
+    const database = client.db('interactive');
+    const emails = database.collection('emails');
+    
+    // Check if email already exists
+    const existingEmail = await emails.findOne({ email: email });
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
     }
+
+    // Insert new email
+    await emails.insertOne({ 
+      email: email,
+      timestamp: new Date()
+    });
+    
     console.log('Email successfully registered:', email);
     res.json({ message: 'Email saved successfully!' });
-  });
+  } catch (error) {
+    console.error('Error saving email:', error);
+    res.status(500).json({ error: 'Error saving email' });
+  }
+});
+
+// GET /check-emails endpoint
+app.get('/check-emails', async (req, res) => {
+  try {
+    const database = client.db('interactive');
+    const emails = database.collection('emails');
+    
+    const allEmails = await emails.find({}).toArray();
+    res.json({ emails: allEmails.map(e => e.email) });
+  } catch (error) {
+    console.error('Error reading emails:', error);
+    res.status(500).json({ error: 'Error reading emails' });
+  }
 });
 
 // Health check endpoint
@@ -57,19 +85,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Add endpoint to check emails file
-app.get('/check-emails', (req, res) => {
-  fs.readFile(emailsPath, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading emails file:', err);
-      return res.status(500).json({ error: 'Error reading emails file' });
-    }
-    res.json({ emails: data.split('\n').filter(email => email.trim()) });
+// Connect to MongoDB and start server
+connectToMongo().then(() => {
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
   });
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-  console.log('Emails file location:', emailsPath);
 });
 
