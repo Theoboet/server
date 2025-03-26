@@ -10,18 +10,21 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS configuration
+// CORS configuration - more permissive for development
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: true, // Allow all origins during development
   methods: ['POST', 'GET', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
+  allowedHeaders: ['Content-Type', 'Accept'],
+  credentials: true
 }));
 
 // POST /signup endpoint
 app.post('/signup', (req, res) => {
+  console.log('Received signup request:', req.body);
   const email = req.body.email;
   
   if (!email) {
+    console.log('No email provided');
     return res.status(400).json({ error: 'Email is required' });
   }
 
